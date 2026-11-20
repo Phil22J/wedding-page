@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Save The Date</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Playfair+Display:ital@0;1&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #EFEAE0;
+            --noir: #161413;
+            --taupe: #6E665E;
+            --rose: #B81D47;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; }
+        body {
+            background: var(--bg);
+            color: var(--noir);
+            font-family: 'Manrope', -apple-system, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        .gate {
+            width: 100%;
+            max-width: 380px;
+            text-align: center;
+        }
+        .gate svg { width: 64px; height: 60px; margin-bottom: 1.6rem; }
+        .gate svg path { fill: none; stroke: var(--rose); stroke-width: 6; stroke-linejoin: round; }
+        .tag {
+            font-size: 0.7rem;
+            letter-spacing: 0.35em;
+            text-transform: uppercase;
+            color: var(--taupe);
+            font-weight: 600;
+            margin-bottom: 0.9rem;
+        }
+        h1 {
+            font-family: 'Playfair Display', Didot, Georgia, serif;
+            font-weight: 400;
+            font-size: 2.2rem;
+            line-height: 1.15;
+            margin-bottom: 2.4rem;
+        }
+        h1 em { color: var(--rose); }
+        form { display: flex; flex-direction: column; gap: 1rem; }
+        input {
+            width: 100%;
+            padding: 1rem 1.2rem;
+            border: 1px solid rgba(22, 20, 19, 0.18);
+            border-radius: 999px;
+            background: #FBF9F5;
+            font: inherit;
+            font-size: 1rem;
+            text-align: center;
+            color: var(--noir);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus { border-color: var(--rose); }
+        button {
+            padding: 1.1rem;
+            border: none;
+            border-radius: 999px;
+            background: var(--noir);
+            color: #F5F2EB;
+            font: inherit;
+            font-size: 0.76rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover { background: var(--rose); }
+        button:disabled { opacity: 0.6; cursor: wait; }
+        .error {
+            min-height: 1.2rem;
+            font-size: 0.85rem;
+            color: var(--rose);
+        }
+        .shake { animation: shake 0.4s; }
+        @keyframes shake {
+            20%, 60% { transform: translateX(-8px); }
+            40%, 80% { transform: translateX(8px); }
+        }
+    </style>
+</head>
+<body>
+    <main class="gate" id="gate">
+        <svg viewBox="0 0 200 185" aria-hidden="true">
+            <path d="M100,170 C100,170 15,115 15,58 C15,28 40,12 65,12 C83,12 95,24 100,36 C105,24 117,12 135,12 C160,12 185,28 185,58 C185,115 100,170 100,170 Z"/>
+        </svg>
+        <div class="tag">Save The Date</div>
+        <h1>Alexandra <em>&amp;</em> Philip</h1>
+        <form id="gateForm">
+            <input type="password" id="pw" placeholder="Passwort" autocomplete="current-password" autofocus required aria-label="Passwort">
+            <button type="submit" id="btn">Eintreten</button>
+            <div class="error" id="err" role="alert"></div>
+        </form>
+    </main>
+
+    <script>
+        const PAYLOAD = __PAYLOAD__;
+        const STORE_KEY = 'ap-wedding-pw';
+
+        const fromB64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+        async function decrypt(password) {
+            const enc = new TextEncoder();
+            const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+            const key = await crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt: fromB64(PAYLOAD.s), iterations: PAYLOAD.n, hash: 'SHA-256' },
+                baseKey, { name: 'AES-GCM', length: 256 }, false, ['decrypt']
+            );
+            const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(PAYLOAD.i) }, key, fromB64(PAYLOAD.c));
+            return new TextDecoder().decode(plain);
+        }
+
+        function show(html) {
+            document.open();
+            document.write(html);
+            document.close();
+        }
+
+        const form = document.getElementById('gateForm');
+        const input = document.getElementById('pw');
+        const btn = document.getElementById('btn');
+        const err = document.getElementById('err');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            btn.disabled = true;
+            err.textContent = '';
+            try {
+                const html = await decrypt(input.value);
+                try { localStorage.setItem(STORE_KEY, input.value); } catch (_) {}
+                show(html);
+            } catch (_) {
+                btn.disabled = false;
+                err.textContent = 'Leider falsch – versucht es noch einmal.';
+                form.classList.remove('shake');
+                void form.offsetWidth;
+                form.classList.add('shake');
+                input.select();
+            }
+        });
+
+        // Wiederkehrende Gäste müssen das Passwort nicht erneut eingeben
+        (async () => {
+            let saved = null;
+            try { saved = localStorage.getItem(STORE_KEY); } catch (_) {}
+            if (!saved) return;
+            try {
+                show(await decrypt(saved));
+            } catch (_) {
+                try { localStorage.removeItem(STORE_KEY); } catch (_) {}
+            }
+        })();
+    </script>
+</body>
+</html>
